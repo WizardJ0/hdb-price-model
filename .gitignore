@@ -1,0 +1,33 @@
+*.csv
+*.geojson
+geojson
+notebooks/KaggleFast.py
+notebooks/KaggleFinal.py
+geojson/AmendmenttoMasterPlan2019LandUselayer.geojson
+geojson/Master Plan 2019 Planning Area Boundary (No Sea).geojson
+geojson/MasterPlan2008SubzoneBoundaryNoSea.geojson
+geojson/MasterPlan2014LandUse.geojson
+geojson/MasterPlan2014SubzoneBoundaryNoSea.geojson
+geojson/MasterPlan2025LandUseLayer.geojson
+geojson/2014
+geojson/2019
+geojson/2025
+notebooks/Kaggle_simple.py
+notebooks/KaggleBetter.py
+notebooks/KaggleOptimized.py
+Old Submissions
+data
+submission V7.csv
+data/sample_sub_reg.csv
+data/test.csv
+data/train.csv
+Old Submissions/submission.csv
+Old Submissions/submission_V6.csv
+Old Submissions/submission_V5.csv
+Old Submissions/submission_V4.csv
+Old Submissions/submission_V3.csv
+Old Submissions/submission_V2.csv
+Old Submissions/submission_V1 (better).csv
+Old Submissions/submission V10.csv
+Old Submissions/submission V9.csv
+Old Submissions/submission V8.csv

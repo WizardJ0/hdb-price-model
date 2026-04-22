@@ -1,0 +1,102 @@
+[Parallel(n_jobs=1)]: Done   3 out of   3 | elapsed:   39.0s finished
+Loading data...
+Train: (150634, 77)  |  Test: (16737, 76)
+
+Loading new data sources (2014 & 2019)...
+✓ 2014 Income: (29, 20) | Transport: (29, 12)
+✓ 2019 Income: (31, 20) | Employed Transport: (47, 12)
+
+✓ New demographic features created: 72
+
+Building advanced spatial features...
+⚠ Rail line/station feature creation failed: 'dist_to_rail_2014'
+Spatial join failed: 'land_use'
+
+Advanced feature engineering...
+
+Outlier detection...
+After outlier removal: (144940, 182)
+
+Advanced target encoding...
+Final data shapes: Train (144940, 219), Test (16737, 219)
+
+================================================================================
+FEATURE IMPACT ANALYSIS - NEW DATA SOURCES (2014, 2019, 2025)
+================================================================================
+
+📊 FEATURE BREAKDOWN:
+  • Demographic Features (Income & Transport):
+    └─ 2014 data:                     ~30 features
+    └─ 2019 data:                     ~30 features
+    └─ Subtotal:                       77 features
+  • Rail & Station Features (2014, 2019, 2025):
+    └─ Distance to rail lines (2014, 2019)
+    └─ Near rail binary (2014, 2019)
+    └─ Distance to nearest station (2025)
+    └─ Near station binary (2025)
+    └─ Station density within 1km (2025)
+    └─ Subtotal:                        7 features
+  • Spatial Features (Enhanced):         6 features
+    └─ CBD/Airport/Jurong distances
+    └─ Land use classification & GPR
+  • Temporal Features:                   5 features
+  • Building/Lease Features:             7 features
+  • Amenity Features:                   12 features
+  • Target-Encoded Categorical:        105 features
+
+  ─────────────────────────────────────
+  TOTAL FEATURES:                      219 features
+
+🆕 NEW FEATURES INTRODUCED:
+  • Income Brackets (2014 & 2019):     36 features
+  • Transport Modes (2014 & 2019):     24 features
+  • Commuting % Features:              4 features
+  • Rail Distance (2014, 2019):        4 features
+  • Rail Binary Indicators:            2 features
+  • ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • Station Distance (2025) - NEW!:    1 feature
+  • Station Proximity (2025) - NEW!:   1 feature
+  • Station Density 1km (2025) - NEW!: 1 feature
+
+📈 EXPECTED IMPACT ON MODEL:
+  ✓ Household Income Data:
+    - Captures neighborhood wealth/affordability
+    - High-income % predicts property appreciation
+    - Distinguishes premium vs. affordable areas
+  ✓ Transport Mode Data:
+    - Public transport % indicates accessibility
+    - Car usage % reflects area development level
+    - Commuting patterns affect desirability
+  ✓ Rail Line Proximity (2014, 2019):
+    - Time-aware MRT network evolution
+    - Captures "last mile" connectivity
+  ✓ 2025 Rail Station Data (MOST CURRENT):
+    - Latest Master Plan infrastructure
+    - 272 station locations (polygon centroids)
+    - Station density clustering effect
+    - Future-proofing predictions with current planning
+
+🎯 TEMPORAL COVERAGE:
+  2014: Historical rail network + household income/transport patterns
+  2019: Intermediate rail network + updated census data
+  2025: LATEST Master Plan + future rail stations planned
+  Result: Temporal awareness of infrastructure evolution
+================================================================================
+
+
+Building simplified ensemble model...
+Cross-validating ensemble...
+.4f
+
+Training final ensemble...
+
+Generating predictions...
+Submission shape: (16735, 2)
+Prediction range: 214,484 - 972,668
+Enhanced submission saved → ../submission_chat_improved.csv
+
+🎯 Enhanced Model Performance:
+Cross-validation RMSE (log scale): 0.0515
+Expected actual RMSE: ~0
+
+Model improvement complete!

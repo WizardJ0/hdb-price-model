@@ -1,0 +1,59 @@
+<stdin>:8: DtypeWarning: Columns (41) have mixed types. Specify dtype option on import or set low_memory=False.
+================================================================================
+UPDATED FEATURE IMPACT ANALYSIS - WITH 2025 RAIL STATION DATA
+================================================================================
+
+ORIGINAL DATA: 150,634 rows × 77 features
+
+NEW FEATURES BREAKDOWN:
+
+INCOME FEATURES:
+  2014 Income Brackets:        18
+  2014 High Income %:          1
+  2019 Income Brackets:        18
+  2019 High Income %:          1
+  → Subtotal:                  38 features
+
+TRANSPORT FEATURES:
+  2014 Transport Modes:        11
+  2014 Public Transport %:     1
+  2014 Car Usage %:            1
+  2019 Transport Modes:        11
+  2019 Public Transport %:     1
+  2019 Car Usage %:            1
+  → Subtotal:                  26 features
+
+RAIL & STATION FEATURES:
+  2014 Rail Distance:          1
+  2014 Rail Binary:            1
+  2019 Rail Distance:          1
+  2019 Rail Binary:            1
+  2025 Station Distance (NEW): 1
+  2025 Station Proximity (NEW):1
+  2025 Station Density (NEW):  1
+  → Subtotal:                  7 features
+
+================================================================================
+FEATURE COUNT SUMMARY:
+  Original Features:           77
+  + Income Features:           +38
+  + Transport Features:        +26
+  + Rail/Station Features:     +7
+  ────────────────────────────────────────
+  TOTAL NEW FEATURES:          71
+  PROJECTED TOTAL:             148
+  EXPANSION:                   +92.2%
+================================================================================
+
+2025 MASTER PLAN RAIL STATIONS: 272 stations
+  • Coverage: Entire Singapore Master Plan
+  • Format: Polygon station footprints → centroid distance calculation
+  • Benefits:
+    - Latest planned infrastructure (most accurate for future)
+    - Station density captures neighborhood clustering
+    - Temporal context: combines 2014, 2019, 2025 networks
+
+TEMPORAL INTELLIGENCE ROUTING:
+  Transactions ≤ 2016:  → 2014 Rail Network
+  Transactions 2017-22: → 2019 Rail Network
+  Transactions ≥ 2023:  → 2025 Master Plan Stations
