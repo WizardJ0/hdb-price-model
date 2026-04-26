@@ -178,86 +178,76 @@ try:
     rail_2025_gdf = gpd.read_file('../geojson/2025/MasterPlan2025RailStationLayer.geojson')
     
     def compute_rail_distance(df, rail_gdf, year_label):
-        """Compute minimum distance to rail lines"""
-        points = gpd.GeoDataFrame(
-            geometry=[Point(lon, lat) for lat, lon in zip(df['Latitude'], df['Longitude'])],
-            crs='EPSG:4326',
-            index=df.index
-        )
+        """Compute minimum distance to rail lines using STRtree spatial index"""
+        from shapely import STRtree
+        points_geom = [Point(lon, lat) for lat, lon in zip(df['Longitude'], df['Latitude'])]
         rail_gdf_wgs = rail_gdf.to_crs('EPSG:4326')
-        
-        # Calculate minimum distance to rail lines
-        distances = points.geometry.apply(lambda pt: rail_gdf_wgs.geometry.distance(pt).min())
-        
-        # Convert distance to km
-        distances_km = distances * 111  # Rough conversion: 1 degree ≈ 111 km
+
+        tree = STRtree(rail_gdf_wgs.geometry.values)
+        nearest_idx = tree.nearest(points_geom)
+        nearest_geoms = rail_gdf_wgs.geometry.iloc[nearest_idx].values
+        distances_km = np.array([pt.distance(g) for pt, g in zip(points_geom, nearest_geoms)]) * 111
+
+        df = df.copy()
         df[f'dist_to_rail_{year_label}'] = distances_km
-        df[f'near_rail_{year_label}'] = (distances_km <= 1).astype(int)  # Within 1km
-        
+        df[f'near_rail_{year_label}'] = (distances_km <= 1).astype(int)
         return df
-    
+
     def compute_station_distance(df, station_gdf, year_label):
-        """Compute distance to nearest rail station (from centroids of station polygons)"""
-        points = gpd.GeoDataFrame(
-            geometry=[Point(lon, lat) for lat, lon in zip(df['Latitude'], df['Longitude'])],
-            crs='EPSG:4326',
-            index=df.index
-        )
+        """Compute distance to nearest rail station using STRtree spatial index"""
+        from shapely import STRtree
+        points_geom = [Point(lon, lat) for lat, lon in zip(df['Longitude'], df['Latitude'])]
         station_gdf_wgs = station_gdf.to_crs('EPSG:4326')
-        
-        # Get station centroids
-        station_centroids = station_gdf_wgs.copy()
-        station_centroids['geometry'] = station_centroids.geometry.centroid
-        
-        # Calculate minimum distance to any station
-        distances = points.geometry.apply(lambda pt: station_centroids.geometry.distance(pt).min())
-        
-        # Convert distance to km
-        distances_km = distances * 111  # Rough conversion: 1 degree ≈ 111 km
+        centroids = station_gdf_wgs.geometry.centroid.values
+
+        tree = STRtree(centroids)
+        nearest_idx = tree.nearest(points_geom)
+        nearest_geoms = centroids[nearest_idx]
+        distances_km = np.array([pt.distance(g) for pt, g in zip(points_geom, nearest_geoms)]) * 111
+
+        # Station density: count stations within 1 km (1/111 degrees)
+        threshold = 1.0 / 111
+        counts = np.array([len(tree.query(pt.buffer(threshold))) for pt in points_geom])
+
+        df = df.copy()
         df[f'dist_to_station_{year_label}'] = distances_km
-        df[f'near_station_{year_label}'] = (distances_km <= 0.5).astype(int)  # Within 500m
-        
-        # Count stations within 1km radius (station density)
-        station_density = []
-        for pt in points.geometry:
-            count = (station_centroids.geometry.distance(pt) * 111 <= 1.0).sum()
-            station_density.append(count)
-        df[f'station_density_1km_{year_label}'] = station_density
-        
+        df[f'near_station_{year_label}'] = (distances_km <= 0.5).astype(int)
+        df[f'station_density_1km_{year_label}'] = counts
         return df
     
-    # Apply rail proximity for records based on transaction year
-    train_copy = train.copy()
-    test_copy = test.copy()
-    
+    # Initialise all rail columns to 0 first so they always exist
+    for col in ['dist_to_rail_2014', 'near_rail_2014', 'dist_to_rail_2019', 'near_rail_2019',
+                'dist_to_station_2025', 'near_station_2025', 'station_density_1km_2025']:
+        train[col] = 0.0
+        test[col] = 0.0
+
     # 2014 rail for transactions <= 2016
     mask_2014 = train['Tranc_Year'] <= 2016
     if mask_2014.sum() > 0:
-        train.loc[mask_2014] = compute_rail_distance(train[mask_2014], rail_2014_gdf, '2014')
-    train.loc[~mask_2014, 'dist_to_rail_2014'] = train.loc[~mask_2014, 'dist_to_rail_2014'].fillna(0)
-    train.loc[~mask_2014, 'near_rail_2014'] = train.loc[~mask_2014, 'near_rail_2014'].fillna(0)
-    
+        tmp = compute_rail_distance(train[mask_2014].copy(), rail_2014_gdf, '2014')
+        train.loc[mask_2014, 'dist_to_rail_2014'] = tmp['dist_to_rail_2014'].values
+        train.loc[mask_2014, 'near_rail_2014'] = tmp['near_rail_2014'].values
+
     # 2019 rail for transactions >= 2017 and < 2023
     mask_2019 = (train['Tranc_Year'] >= 2017) & (train['Tranc_Year'] < 2023)
     if mask_2019.sum() > 0:
-        train.loc[mask_2019] = compute_rail_distance(train[mask_2019], rail_2019_gdf, '2019')
-    train.loc[~mask_2019, 'dist_to_rail_2019'] = train.loc[~mask_2019, 'dist_to_rail_2019'].fillna(0)
-    train.loc[~mask_2019, 'near_rail_2019'] = train.loc[~mask_2019, 'near_rail_2019'].fillna(0)
-    
-    # 2025 rail for transactions >= 2023 (most updated)
+        tmp = compute_rail_distance(train[mask_2019].copy(), rail_2019_gdf, '2019')
+        train.loc[mask_2019, 'dist_to_rail_2019'] = tmp['dist_to_rail_2019'].values
+        train.loc[mask_2019, 'near_rail_2019'] = tmp['near_rail_2019'].values
+
+    # 2025 rail for transactions >= 2023
     mask_2025 = train['Tranc_Year'] >= 2023
     if mask_2025.sum() > 0:
-        train.loc[mask_2025] = compute_station_distance(train[mask_2025], rail_2025_gdf, '2025')
-    train.loc[~mask_2025, 'dist_to_station_2025'] = train.loc[~mask_2025, 'dist_to_station_2025'].fillna(0)
-    train.loc[~mask_2025, 'near_station_2025'] = train.loc[~mask_2025, 'near_station_2025'].fillna(0)
-    train.loc[~mask_2025, 'station_density_1km_2025'] = train.loc[~mask_2025, 'station_density_1km_2025'].fillna(0)
-    
+        tmp = compute_station_distance(train[mask_2025].copy(), rail_2025_gdf, '2025')
+        train.loc[mask_2025, 'dist_to_station_2025'] = tmp['dist_to_station_2025'].values
+        train.loc[mask_2025, 'near_station_2025'] = tmp['near_station_2025'].values
+        train.loc[mask_2025, 'station_density_1km_2025'] = tmp['station_density_1km_2025'].values
+
     # For test set, use 2025 rail station data (most recent planning)
-    test = compute_station_distance(test, rail_2025_gdf, '2025')
-    test['dist_to_rail_2014'] = 0
-    test['near_rail_2014'] = 0
-    test['dist_to_rail_2019'] = 0
-    test['near_rail_2019'] = 0
+    tmp_test = compute_station_distance(test.copy(), rail_2025_gdf, '2025')
+    test['dist_to_station_2025'] = tmp_test['dist_to_station_2025'].values
+    test['near_station_2025'] = tmp_test['near_station_2025'].values
+    test['station_density_1km_2025'] = tmp_test['station_density_1km_2025'].values
     
     print(f"✓ Rail line features added (2014, 2019, 2025)")
     print(f"✓ Station proximity features added for 2025 rail plan")
@@ -293,23 +283,28 @@ try:
 
         return result
 
-    # Apply spatial joins based on transaction year
-    train_spatial = pd.DataFrame(index=train.index)
-    test_spatial = spatial_join_point_poly(test, gdf_2025)
+    # Initialise with defaults, then overwrite per year
+    train['land_use'] = 'UNKNOWN'
+    train['gpr'] = 0.0
+    test['land_use'] = 'UNKNOWN'
+    test['gpr'] = 0.0
 
     mask_2014 = train['Tranc_Year'] <= 2016
     mask_2019 = train['Tranc_Year'] >= 2017
 
     if mask_2014.sum() > 0:
         spatial_2014 = spatial_join_point_poly(train[mask_2014], gdf_2014)
-        train_spatial.loc[mask_2014] = spatial_2014.loc[mask_2014]
+        train.loc[mask_2014, 'land_use'] = spatial_2014['land_use'].values
+        train.loc[mask_2014, 'gpr'] = spatial_2014['gpr'].values
 
     if mask_2019.sum() > 0:
         spatial_2019 = spatial_join_point_poly(train[mask_2019], gdf_2019)
-        train_spatial.loc[mask_2019] = spatial_2019.loc[mask_2019]
+        train.loc[mask_2019, 'land_use'] = spatial_2019['land_use'].values
+        train.loc[mask_2019, 'gpr'] = spatial_2019['gpr'].values
 
-    train = pd.concat([train, train_spatial], axis=1)
-    test = pd.concat([test, test_spatial], axis=1)
+    test_spatial = spatial_join_point_poly(test, gdf_2025)
+    test['land_use'] = test_spatial['land_use'].values
+    test['gpr'] = test_spatial['gpr'].values
 
     print(f"Spatial join complete — land use categories: {train['land_use'].nunique()}")
 
@@ -628,7 +623,7 @@ print("Cross-validating ensemble...")
 cv_scores = cross_val_score(ensemble_model, X, y_log, cv=3,
                            scoring='neg_root_mean_squared_error', verbose=1)
 cv_rmse = -cv_scores.mean()
-print(".4f")
+print(f"Cross-validation RMSE (log scale): {cv_rmse:.4f}")
 
 # Train final ensemble
 print("\nTraining final ensemble...")
@@ -652,21 +647,20 @@ y_pred = np.expm1(y_pred_log)
 # Post-processing: ensure reasonable bounds
 y_pred = np.clip(y_pred, 100000, 2000000)  # Reasonable HDB price range
 
-# Create submission
+# Create submission — use sample as base to guarantee exactly 16735 rows
 sample = pd.read_csv('../data/sample_sub_reg.csv')
-sample_ids = set(sample['Id'])
 
-submission = pd.DataFrame({
-    'Id': test['id'],
-    'Predicted': y_pred.round().astype(int)
-})
+pred_map = dict(zip(test['id'], y_pred.round().astype(int)))
+sample['Predicted'] = sample['Id'].map(pred_map)
 
-submission_filtered = submission[submission['Id'].isin(sample_ids)]
+# Fallback for any IDs missing from test: use median prediction
+fallback = int(np.median(list(pred_map.values())))
+sample['Predicted'] = sample['Predicted'].fillna(fallback).astype(int)
 
-print(f"Submission shape: {submission_filtered.shape}")
-print(f"Prediction range: {submission_filtered['Predicted'].min():,} - {submission_filtered['Predicted'].max():,}")
+print(f"Submission shape: {sample.shape}")
+print(f"Prediction range: {sample['Predicted'].min():,} - {sample['Predicted'].max():,}")
 
-submission_filtered.to_csv('../submission_chat_improved.csv', index=False)
+sample.to_csv('../submission_chat_improved.csv', index=False)
 print("Enhanced submission saved → ../submission_chat_improved.csv")
 
 print(f"\n🎯 Enhanced Model Performance:")

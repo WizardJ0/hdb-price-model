@@ -2,7 +2,6 @@
 *.geojson
 geojson
 notebooks/KaggleFast.py
-notebooks/KaggleFinal.py
 geojson/AmendmenttoMasterPlan2019LandUselayer.geojson
 geojson/Master Plan 2019 Planning Area Boundary (No Sea).geojson
 geojson/MasterPlan2008SubzoneBoundaryNoSea.geojson
@@ -31,3 +30,4 @@ Old Submissions/submission_V1 (better).csv
 Old Submissions/submission V10.csv
 Old Submissions/submission V9.csv
 Old Submissions/submission V8.csv
+.DS_Store

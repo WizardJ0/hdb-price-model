@@ -104,7 +104,7 @@ for seed_idx, seed in enumerate(seeds):
     print(f"\n🌱 Training with seed {seed} ({seed_idx+1}/{len(seeds)})")
 
     lgb_model = lgb.LGBMRegressor(
-        n_estimators=2000, learning_rate=0.03, num_leaves=127, max_depth=10,
+        n_estimators=3000, learning_rate=0.02, num_leaves=127, max_depth=10,
         subsample=0.85, colsample_bytree=0.85, reg_alpha=0.08, reg_lambda=0.08,
         min_child_samples=15, random_state=seed, verbosity=-1, n_jobs=-1
     )
@@ -112,7 +112,7 @@ for seed_idx, seed in enumerate(seeds):
     lgb_pred = lgb_model.predict(test_X)
 
     xgb_model = xgb.XGBRegressor(
-        n_estimators=2000, learning_rate=0.03, max_depth=7, subsample=0.85,
+        n_estimators=3000, learning_rate=0.02, max_depth=7, subsample=0.85,
         colsample_bytree=0.85, reg_alpha=0.08, reg_lambda=0.08, min_child_weight=7,
         random_state=seed, verbosity=0, n_jobs=-1
     )
@@ -120,7 +120,7 @@ for seed_idx, seed in enumerate(seeds):
     xgb_pred = xgb_model.predict(test_X)
 
     cb_model = cb.CatBoostRegressor(
-        iterations=2000, learning_rate=0.03, depth=8, l2_leaf_reg=1.5,
+        iterations=3000, learning_rate=0.02, depth=8, l2_leaf_reg=1.5,
         subsample=0.85, random_seed=seed, verbose=False
     )
     cb_model.fit(X, y_log)
