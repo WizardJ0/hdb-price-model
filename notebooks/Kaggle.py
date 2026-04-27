@@ -100,27 +100,40 @@ for df in [train, test]:
     df['flat_type_num']      = df['flat_type'].map(FLAT_TYPE_ORDER).fillna(4).astype(int)
     df['market_regime']      = df['Tranc_Year'].apply(
         lambda x: 0 if x <= 2013 else (1 if x <= 2016 else (2 if x <= 2018 else 3)))
-    df['building_age']       = CURRENT_YEAR - df['year_completed']
-    df['lease_remaining']    = 99 - (CURRENT_YEAR - df['lease_commence_date'])
-    df['lease_remaining_sq'] = df['lease_remaining'] ** 2
-    df['Tranc_Quarter']      = ((df['Tranc_Month'] - 1) // 3) + 1
+
+    # Age/lease at TIME OF TRANSACTION (more accurate than current-year versions)
+    df['age_at_tranc']        = df['Tranc_Year'] - df['year_completed']
+    df['lease_at_tranc']      = 99 - (df['Tranc_Year'] - df['lease_commence_date'])
+    df['lease_at_tranc_sq']   = df['lease_at_tranc'] ** 2
+    df['age_x_lease_tranc']   = df['age_at_tranc'] * df['lease_at_tranc']
+    # Current-year versions kept as additional signal for test-set recency
+    df['building_age']        = CURRENT_YEAR - df['year_completed']
+    df['lease_remaining']     = 99 - (CURRENT_YEAR - df['lease_commence_date'])
+    df['lease_remaining_sq']  = df['lease_remaining'] ** 2
+
+    df['Tranc_Quarter']       = ((df['Tranc_Month'] - 1) // 3) + 1
     df['floor_area_per_room']    = df['floor_area_sqm'] / (df['total_dwelling_units'] + 1)
     df['age_lease_interaction']  = df['building_age'] * df['lease_remaining']
     df['floor_area_price_proxy'] = df['floor_area_sqm'] * df['total_dwelling_units']
-    df['amenity_score']      = (df['Mall_Within_1km'] + df['Hawker_Within_1km']) / (df['Mall_Nearest_Distance'] + 1)
+    df['amenity_score']       = (df['Mall_Within_1km'] + df['Hawker_Within_1km']) / (df['Mall_Nearest_Distance'] + 1)
     df['price_per_sqm_proxy'] = df['floor_area_sqm'] / (df['total_dwelling_units'] + 1)
-    df['storey_ratio']       = df['mid_storey'] / df['max_floor_lvl'].replace(0, np.nan).fillna(1)
-    df['dist_to_cbd']        = haversine_km(df['Latitude'], df['Longitude'], CBD_LAT,     CBD_LON)
-    df['dist_to_orchard']    = haversine_km(df['Latitude'], df['Longitude'], ORCHARD_LAT, ORCHARD_LON)
-    df['dist_to_jurong']     = haversine_km(df['Latitude'], df['Longitude'], JURONG_LAT,  JURONG_LON)
-    df['mrt_accessibility']  = 1.0 / (df['mrt_nearest_distance'] + 1)
-    df['log_mrt_dist']       = np.log1p(df['mrt_nearest_distance'])
-    df['log_pri_dist']       = np.log1p(df['pri_sch_nearest_distance'])
-    df['log_sec_dist']       = np.log1p(df['sec_sch_nearest_dist'])
-    df['log_mall_dist']      = np.log1p(df['Mall_Nearest_Distance'])
-    df['log_hawker_dist']    = np.log1p(df['Hawker_Nearest_Distance'])
-    df['floor_x_storey']     = df['floor_area_sqm'] * df['mid_storey']
-    df['dist_cbd_x_storey']  = df['dist_to_cbd'] * df['storey_ratio']
+    df['storey_ratio']        = df['mid_storey'] / df['max_floor_lvl'].replace(0, np.nan).fillna(1)
+    df['dist_to_cbd']         = haversine_km(df['Latitude'], df['Longitude'], CBD_LAT,     CBD_LON)
+    df['dist_to_orchard']     = haversine_km(df['Latitude'], df['Longitude'], ORCHARD_LAT, ORCHARD_LON)
+    df['dist_to_jurong']      = haversine_km(df['Latitude'], df['Longitude'], JURONG_LAT,  JURONG_LON)
+    df['mrt_accessibility']   = 1.0 / (df['mrt_nearest_distance'] + 1)
+    df['log_mrt_dist']        = np.log1p(df['mrt_nearest_distance'])
+    df['log_pri_dist']        = np.log1p(df['pri_sch_nearest_distance'])
+    df['log_sec_dist']        = np.log1p(df['sec_sch_nearest_dist'])
+    df['log_mall_dist']       = np.log1p(df['Mall_Nearest_Distance'])
+    df['log_hawker_dist']     = np.log1p(df['Hawker_Nearest_Distance'])
+    df['floor_x_storey']      = df['floor_area_sqm'] * df['mid_storey']
+    df['dist_cbd_x_storey']   = df['dist_to_cbd'] * df['storey_ratio']
+    # Block unit-mix profile
+    sold_cols = ['1room_sold', '2room_sold', '3room_sold', '4room_sold',
+                 '5room_sold', 'exec_sold', 'multigen_sold', 'studio_apartment_sold']
+    df['total_units_sold'] = df[[c for c in sold_cols if c in df.columns]].sum(axis=1)
+    df['exec_ratio']       = df['exec_sold'] / (df['total_units_sold'] + 1)
 
 y        = train['resale_price'].reset_index(drop=True)
 y_log    = np.log1p(y)
