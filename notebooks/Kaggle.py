@@ -9,6 +9,10 @@ Improvements over KaggleGridSearch best (21,615.74 Kaggle / 21,467.43 OOF):
   - Log-transformed distance features
   - Interaction features: floor_x_storey, dist_cbd_x_storey
   - Lease decay: lease_remaining^2
+  - Transaction-time age/lease features (age_at_tranc, lease_at_tranc, _sq, interaction)
+  - Block unit-mix profile (total_units_sold, exec_ratio)
+  [NEW] geo_cluster: K-means(30) on lat/lon — finer geographic price zones than ZONE_MAP
+  [NEW] Ridge stacking meta-learner — replaces fixed LGB/XGB/CB blend weights
 """
 
 import pandas as pd
@@ -19,15 +23,18 @@ warnings.filterwarnings('ignore')
 import lightgbm as lgb
 import xgboost as xgb
 import catboost as cb
+from sklearn.cluster import KMeans              # [NEW] geo clustering
+from sklearn.linear_model import Ridge          # [NEW] stacking meta-learner
 from sklearn.model_selection import KFold
 import matplotlib
 matplotlib.use('Agg')
 
 # ── Config ───────────────────────────────────────────────────────────
-N_FOLDS   = 10
-ALL_SEEDS = [42, 123, 456, 789, 999, 2024, 31, 77, 314, 1337,
-             555, 888, 2001, 7777, 9999, 11, 22, 33, 44, 55]
-N_SEEDS   = len(ALL_SEEDS)
+N_FOLDS    = 10
+ALL_SEEDS  = [42, 123, 456, 789, 999, 2024, 31, 77, 314, 1337,
+              555, 888, 2001, 7777, 9999, 11, 22, 33, 44, 55]
+N_SEEDS    = len(ALL_SEEDS)
+N_CLUSTERS = 30   # [NEW] K-means geo clusters; REVERT: remove + delete geo_cluster block
 
 # ── Load data ────────────────────────────────────────────────────────
 print("Loading data...")
@@ -135,6 +142,14 @@ for df in [train, test]:
     df['total_units_sold'] = df[[c for c in sold_cols if c in df.columns]].sum(axis=1)
     df['exec_ratio']       = df['exec_sold'] / (df['total_units_sold'] + 1)
 
+# ── [NEW] Geo clustering ──────────────────────────────────────────────
+# K-means on raw lat/lon captures price micro-zones finer than the 5-bucket ZONE_MAP.
+# Fitted on train only to avoid leakage; test transformed with the same centroids.
+# REVERT: remove this block and N_CLUSTERS from config.
+_geo_km = KMeans(n_clusters=N_CLUSTERS, random_state=42, n_init=10)
+train['geo_cluster'] = _geo_km.fit_predict(train[['Latitude', 'Longitude']])
+test['geo_cluster']  = _geo_km.predict(test[['Latitude', 'Longitude']])
+
 y        = train['resale_price'].reset_index(drop=True)
 y_log    = np.log1p(y)
 X_raw    = train.drop('resale_price', axis=1).reset_index(drop=True)
@@ -176,8 +191,12 @@ def make_key(df, cols):
 
 # ── One seed pass ────────────────────────────────────────────────────
 def run_seed(seed):
-    seed_oof  = np.zeros(len(X_raw))
-    seed_test = np.zeros(len(test_raw))
+    # [NEW] Per-model arrays for Ridge stacking.
+    # REVERT (stacking): replace with:
+    #   seed_oof  = np.zeros(len(X_raw))
+    #   seed_test = np.zeros(len(test_raw))
+    m_oof  = {k: np.zeros(len(X_raw))    for k in ('lgb', 'xgb', 'cb')}
+    m_test = {k: np.zeros(len(test_raw)) for k in ('lgb', 'xgb', 'cb')}
 
     kf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=seed)
     for fold, (tr_idx, val_idx) in enumerate(kf.split(X_raw)):
@@ -221,37 +240,55 @@ def run_seed(seed):
         fval_X = fval_X[ftr_X.columns]
         fte_X  = fte_X[ftr_X.columns]
 
+        # REVERT (lr/depth): restore n_estimators=3000, learning_rate=0.03,
+        #   num_leaves=127, max_depth=10 for LGB; depth=8 for CB.
         lgb_m = lgb.LGBMRegressor(
-            n_estimators=3000, learning_rate=0.03, num_leaves=127, max_depth=10,
+            n_estimators=6000, learning_rate=0.01, num_leaves=255, max_depth=12,
             subsample=0.85, colsample_bytree=0.85, reg_alpha=0.08, reg_lambda=0.08,
-            min_child_samples=15, random_state=seed, verbosity=-1, n_jobs=-1,
+            min_child_samples=15, random_state=seed, verbosity=-1, device='gpu',
         )
         lgb_m.fit(ftr_X, ftr_y_log,
                   eval_set=[(fval_X, fval_y_log)],
                   callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(-1)])
 
         xgb_m = xgb.XGBRegressor(
-            n_estimators=3000, learning_rate=0.03, max_depth=7, subsample=0.85,
+            n_estimators=6000, learning_rate=0.01, max_depth=7, subsample=0.85,
             colsample_bytree=0.85, reg_alpha=0.08, reg_lambda=0.08, min_child_weight=7,
-            random_state=seed, verbosity=0, n_jobs=-1,
+            random_state=seed, verbosity=0, device='cuda', tree_method='hist',
             early_stopping_rounds=50, eval_metric='rmse',
         )
         xgb_m.fit(ftr_X, ftr_y_log, eval_set=[(fval_X, fval_y_log)], verbose=False)
 
         cb_m = cb.CatBoostRegressor(
-            iterations=3000, learning_rate=0.03, depth=8, l2_leaf_reg=1.5,
-            subsample=0.85, random_seed=seed, verbose=False, early_stopping_rounds=50,
+            iterations=6000, learning_rate=0.01, depth=10, l2_leaf_reg=1.5,
+            subsample=0.85, bootstrap_type='Bernoulli',  # Bernoulli required for subsample on GPU
+            random_seed=seed, verbose=False, early_stopping_rounds=50,
+            task_type='GPU',
         )
         cb_m.fit(ftr_X, ftr_y_log, eval_set=(fval_X, fval_y_log))
 
-        lgb_oof  = lgb_m.predict(fval_X);  lgb_test = lgb_m.predict(fte_X)
-        xgb_oof  = xgb_m.predict(fval_X);  xgb_test = xgb_m.predict(fte_X)
-        cb_oof   = cb_m.predict(fval_X);   cb_test  = cb_m.predict(fte_X)
+        # [NEW] Store per-model predictions for Ridge stacking.
+        # REVERT (stacking): replace these 6 lines with fixed-weight blend:
+        #   lgb_oof  = lgb_m.predict(fval_X);  lgb_test = lgb_m.predict(fte_X)
+        #   xgb_oof  = xgb_m.predict(fval_X);  xgb_test = xgb_m.predict(fte_X)
+        #   cb_oof   = cb_m.predict(fval_X);   cb_test  = cb_m.predict(fte_X)
+        #   seed_oof[val_idx] = lgb_oof * 0.35 + xgb_oof * 0.25 + cb_oof * 0.40
+        #   seed_test        += (lgb_test * 0.35 + xgb_test * 0.25 + cb_test * 0.40) / N_FOLDS
+        m_oof['lgb'][val_idx] = lgb_m.predict(fval_X)
+        m_oof['xgb'][val_idx] = xgb_m.predict(fval_X)
+        m_oof['cb'][val_idx]  = cb_m.predict(fval_X)
+        m_test['lgb'] += lgb_m.predict(fte_X) / N_FOLDS
+        m_test['xgb'] += xgb_m.predict(fte_X) / N_FOLDS
+        m_test['cb']  += cb_m.predict(fte_X)  / N_FOLDS
 
-        seed_oof[val_idx] = lgb_oof * 0.35 + xgb_oof * 0.25 + cb_oof * 0.40
-        seed_test        += (lgb_test * 0.35 + xgb_test * 0.25 + cb_test * 0.40) / N_FOLDS
-
-    return seed_oof, seed_test
+    # [NEW] Ridge meta-learner — learns optimal blend weights from per-seed OOF predictions
+    # in log space. fit_intercept=False so the intercept comes from the base models.
+    # REVERT (stacking): remove this block and restore seed_oof/seed_test above.
+    S_train = np.column_stack([m_oof['lgb'],  m_oof['xgb'],  m_oof['cb']])
+    S_test  = np.column_stack([m_test['lgb'], m_test['xgb'], m_test['cb']])
+    meta = Ridge(alpha=1.0, fit_intercept=False)
+    meta.fit(S_train, y_log)
+    return meta.predict(S_train), meta.predict(S_test)
 
 
 # ── Main loop ─────────────────────────────────────────────────────────
@@ -288,5 +325,5 @@ final_test = np.clip(final_test, 150000, 1300000)
 sub = pd.DataFrame({'Id': test_ids, 'Predicted': final_test.round().astype(int)})
 sub = sub[sub['Id'].isin(sample_ids)]
 sub.to_csv('../submission_kaggle.csv', index=False)
-print(f"Saved → ../submission_kaggle.csv  |  rows: {sub.shape[0]}")
+print(f"Saved -> ../submission_kaggle.csv  |  rows: {sub.shape[0]}")
 print(f"Prediction range: {sub['Predicted'].min():,} – {sub['Predicted'].max():,}")
